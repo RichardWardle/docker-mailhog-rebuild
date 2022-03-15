@@ -1,0 +1,29 @@
+---
+version: 2
+updates:
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      time: "20:00"
+      timezone: "Australia/Sydney"
+    assignees:
+      - "RichardWardle"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "20:00"
+      timezone: "Australia/Sydney"
+    assignees:
+      - "RichardWardle"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "docker"

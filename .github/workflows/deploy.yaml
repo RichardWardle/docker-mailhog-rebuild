@@ -1,0 +1,97 @@
+---
+name: Deploy
+'on':
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  AWS_REGION: ap-southeast-2
+  IMAGE_NAME: mailhog
+  GHCR_REPOSITORY: ghcr.io
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-python@v2
+        with:
+          python-version: '3.x'
+
+      - uses: TrueBrain/actions-flake8@v2
+        with:
+          ignore: E251,E501
+
+  deploy_aws_ecr:
+    runs-on: ubuntu-latest
+    needs: lint-deploy
+    permissions:
+      packages: write
+      contents: read
+    
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set env
+        id: set_env_tag
+        run: |
+          echo "RELEASE_VERSION=$(echo ${GITHUB_REF:10})" >> $GITHUB_ENV
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@ea7b857d8a33dc2fb4ef5a724500044281b49a5e
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@aaf69d68aa3fb14c1d5a6be9ac61fe15b48453a2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build --build-arg VERSION=${{ github.event.workflow_run.head_commit.id }} -t $ECR_REGISTRY/${{ secrets.AWS_ECR_CONTAINER_NAME }}:$IMAGE_NAME-${{ env.RELEASE_VERSION }} .
+          docker push $ECR_REGISTRY/${{ secrets.AWS_ECR_CONTAINER_NAME }}:$IMAGE_NAME-${{ env.RELEASE_VERSION }}
+
+  deploy_gh_cr:
+    runs-on: ubuntu-latest
+    needs: lint-deploy
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@42d299face0c5c43a0487c477f595ac9cf22f1a7
+        with:
+          registry: ${{ env.GHCR_REPOSITORY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@e5622373a38e60fb6d795a4421e56882f2d7a681
+        with:
+          images: ${{ env.GHCR_REPOSITORY }}/${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@7f9d37fa544684fb73bfe4835ed7214c255ce02b
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: VERSION=${{ github.sha }}
