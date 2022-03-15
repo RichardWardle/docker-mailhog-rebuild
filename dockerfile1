@@ -1,5 +1,5 @@
 #
-# MailHog Dockerfile
+# MailHog Dockerfile Rebuild
 #
 
 FROM golang:alpine as builder
